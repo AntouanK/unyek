@@ -113,12 +113,7 @@ function combineFileParts(fileParts: FilePart[]): string {
       const endChars = prevContentTrimmed.slice(-10); // Look at last 10 chars
       const startChars = currentContentTrimmed.slice(0, 10); // Look at first 10 chars
 
-      console.log(`Checking join between:`);
-      console.log(`End: "${endChars}"`);
-      console.log(`Start: "${startChars}"`);
-
       if (shouldJoinParts(endChars, startChars)) {
-        console.log("Joining parts");
         // Remove trailing whitespace from result and leading whitespace from content
         result = result.replace(/\s+$/, "");
         content = content.replace(/^\s+/, "");
