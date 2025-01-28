@@ -67,6 +67,25 @@ function groupFilesByBasePath(
 }
 
 /**
+ * Determines if two parts should be joined without whitespace
+ * @param end - End of first part
+ * @param start - Start of second part
+ * @returns Whether the parts should be joined
+ */
+function shouldJoinParts(end: string, start: string): boolean {
+  // Case 1: Split word or identifier
+  if (end.match(/\w$/) && start.match(/^\w/)) return true;
+
+  // Case 2: Split string literal
+  if (end.match(/["']$/) && start.match(/^["']/)) return true;
+
+  // Case 3: Split string content
+  if (end.match(/["'][^"']*$/) && start.match(/^[^"']*["']/)) return true;
+
+  return false;
+}
+
+/**
  * Combines parts of a file in the correct order
  * @param fileParts - Array of file parts
  * @returns Combined content of all parts
@@ -76,7 +95,40 @@ function combineFileParts(fileParts: FilePart[]): string {
   const sortedParts = [...fileParts].sort(
     (a, b) => a.partNumber - b.partNumber
   );
-  return sortedParts.map((part) => part.content).join("");
+
+  let result = "";
+  for (let i = 0; i < sortedParts.length; i++) {
+    const part = sortedParts[i];
+    let content = part.content;
+
+    // If this isn't the first part, check for continuations
+    if (i > 0) {
+      const prevContent = sortedParts[i - 1].content;
+
+      // Get the actual content without trailing whitespace
+      const prevContentTrimmed = prevContent.replace(/\s+$/, "");
+      const currentContentTrimmed = content.replace(/^\s+/, "");
+
+      // Look at the last few characters of previous part and first few of current
+      const endChars = prevContentTrimmed.slice(-10); // Look at last 10 chars
+      const startChars = currentContentTrimmed.slice(0, 10); // Look at first 10 chars
+
+      console.log(`Checking join between:`);
+      console.log(`End: "${endChars}"`);
+      console.log(`Start: "${startChars}"`);
+
+      if (shouldJoinParts(endChars, startChars)) {
+        console.log("Joining parts");
+        // Remove trailing whitespace from result and leading whitespace from content
+        result = result.replace(/\s+$/, "");
+        content = content.replace(/^\s+/, "");
+      }
+    }
+
+    result += content;
+  }
+
+  return result;
 }
 
 /**
@@ -86,15 +138,28 @@ function combineFileParts(fileParts: FilePart[]): string {
  */
 function parseYekContent(content: string): Map<string, string> {
   const result = new Map<string, string>();
-  const sections = content.split(new RegExp(`^${FILE_MARKER}\\s+`, "m"));
 
-  // First section is empty due to split, so we skip it
-  for (const section of sections.slice(1)) {
-    const firstNewline = section.indexOf("\n");
-    if (firstNewline === -1) continue;
+  // Find all marker positions
+  const markerRegex = new RegExp(`^${FILE_MARKER}\\s+.*$`, "gm");
+  let match;
+  const markers: { index: number; marker: string }[] = [];
 
-    const path = section.slice(0, firstNewline).trim();
-    const fileContent = section.slice(firstNewline + 1);
+  while ((match = markerRegex.exec(content)) !== null) {
+    markers.push({ index: match.index, marker: match[0] });
+  }
+
+  // Process each section
+  for (let i = 0; i < markers.length; i++) {
+    const currentMarker = markers[i];
+    const nextMarker = markers[i + 1];
+
+    // Extract the path (remove marker and trim)
+    const path = currentMarker.marker.slice(FILE_MARKER.length).trim();
+
+    // Extract content up to the next marker or end of file
+    const contentStart = currentMarker.index + currentMarker.marker.length + 1; // +1 for the newline
+    const contentEnd = nextMarker ? nextMarker.index : content.length;
+    let fileContent = content.slice(contentStart, contentEnd);
 
     if (path) {
       result.set(path, fileContent);
